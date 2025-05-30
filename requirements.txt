@@ -16,7 +16,7 @@ python-docx==1.1.0
 beautifulsoup4==4.12.2
 
 # 벡터 임베딩 및 검색
-sentence-transformers==2.2.2
+sentence-transformers==4.1.0
 faiss-cpu==1.7.4
 chromadb==0.4.22
 
