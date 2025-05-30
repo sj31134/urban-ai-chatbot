@@ -1,0 +1,111 @@
+# 도시정비사업 AI 챗봇 .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 가상환경
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 환경 변수 (중요!)
+.env
+.env.local
+.env.production
+config/secrets.yaml
+config/api_keys.json
+
+# 법령 데이터 (용량 및 저작권)
+data/laws/*.pdf
+data/ordinances/*.pdf
+data/processed/*.json
+data/temp/
+data/cache/
+
+# Neo4j 데이터
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+data/neo4j/
+data/neo4j_logs/
+
+# AI 모델 캐시
+.cache/
+models/
+embeddings/
+*.model
+*.bin
+
+# 로그 파일
+logs/
+*.log
+*.log.*
+
+# IDE 및 에디터
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 테스트 관련
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Streamlit
+.streamlit/secrets.toml
+
+# 임시 파일
+tmp/
+temp/
+*.tmp
+*.bak
+
+# 문서 빌드
+docs/_build/
+
+# 패키지 관리
+*.pkg
+*.dmg 

@@ -1,0 +1,84 @@
+# Neo4j 도시정비 법령 그래프 데이터베이스 설정
+
+connection:
+  uri: "bolt://localhost:7687"
+  username: "legal_admin"
+  password: "secure_password"
+  database: "legal_graph"
+  timeout: 30
+
+schema:
+  node_types:
+    Law:
+      properties:
+        - name: "법령명"
+        - law_id: "법령식별번호"
+        - effective_date: "시행일"
+        - last_updated: "최종개정일"
+        - category: "법령분류"
+        - status: "시행상태"
+    
+    Article:
+      properties:
+        - article_number: "조문번호"
+        - content: "조문내용"
+        - section: "편장절"
+        - subsection: "항호"
+        - last_updated: "개정일"
+    
+    Ordinance:
+      properties:
+        - ordinance_name: "조례명"
+        - region: "지자체"
+        - ordinance_number: "조례번호"
+        - enacted_date: "제정일"
+        - last_amended: "최종개정일"
+    
+    Precedent:
+      properties:
+        - case_number: "판례번호"
+        - court: "법원"
+        - decision_date: "선고일"
+        - case_type: "사건종류"
+        - summary: "판시사항"
+
+  relationships:
+    REFERENCES:
+      description: "조문 간 참조관계"
+      properties:
+        - reference_type: "참조유형"
+        - context: "참조맥락"
+    
+    APPLIES_TO:
+      description: "판례-조문 적용관계"
+      properties:
+        - application_type: "적용유형"
+        - relevance_score: "관련도점수"
+    
+    IMPLEMENTS:
+      description: "조례-법령 시행관계"
+      properties:
+        - implementation_date: "시행일"
+        - scope: "적용범위"
+    
+    AMENDS:
+      description: "개정관계"
+      properties:
+        - amendment_date: "개정일"
+        - amendment_type: "개정유형"
+
+indexing:
+  text_indexes:
+    - "Article.content"
+    - "Law.name"
+    - "Ordinance.ordinance_name"
+  
+  composite_indexes:
+    - ["Law.category", "Law.status"]
+    - ["Article.article_number", "Article.section"]
+
+search_config:
+  similarity_threshold: 0.8
+  max_results: 20
+  include_relationships: true
+  relationship_depth: 3 

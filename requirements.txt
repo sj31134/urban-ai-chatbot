@@ -1,0 +1,36 @@
+# 도시정비사업 Graph RAG 시스템 의존성
+# LangChain 생태계
+langchain==0.1.0
+langchain-community==0.0.13
+langchain-google-genai==0.0.6
+langchain-neo4j==0.0.5
+
+# Neo4j 그래프 데이터베이스
+neo4j==5.15.0
+py2neo==2021.2.3
+
+# 문서 처리
+PyPDF2==3.0.1
+pypdf==3.17.4
+python-docx==1.1.0
+beautifulsoup4==4.12.2
+
+# 벡터 임베딩 및 검색
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+chromadb==0.4.22
+
+# 환경 설정 및 유틸리티
+python-dotenv==1.0.0
+pydantic==2.5.2
+pyyaml==6.0.1
+streamlit==1.29.0
+
+# 테스트 및 개발
+pytest==7.4.3
+pytest-asyncio==0.21.1
+jupyter==1.0.0
+
+# 웹 스크래핑 (법령 데이터 수집용)
+requests==2.31.0
+selenium==4.16.0 
