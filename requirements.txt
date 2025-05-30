@@ -33,4 +33,4 @@ jupyter==1.0.0
 
 # 웹 스크래핑 (법령 데이터 수집용)
 requests==2.31.0
-selenium==4.16.0 
+selenium==4.33.0 
