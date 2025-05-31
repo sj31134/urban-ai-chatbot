@@ -1,11 +1,22 @@
 # Neo4j 도시정비 법령 그래프 데이터베이스 설정
 
+# Neo4j 연결 설정
 connection:
-  uri: "bolt://localhost:7687"
-  username: "legal_admin"
-  password: "secure_password"
-  database: "legal_graph"
-  timeout: 30
+  uri: ${NEO4J_URI}
+  username: ${NEO4J_USER}
+  password: ${NEO4J_PASSWORD}
+  database: ${NEO4J_DATABASE}
+
+# 성능 설정
+performance:
+  max_connection_lifetime: 3600
+  max_connection_pool_size: 50
+  connection_acquisition_timeout: 60
+
+# 그래프 설정
+graph:
+  batch_size: 1000
+  max_relationships_per_query: 500
 
 schema:
   node_types:

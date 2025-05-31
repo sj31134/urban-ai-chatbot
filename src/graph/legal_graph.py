@@ -83,19 +83,46 @@ class LegalGraphManager:
         Args:
             config_path: Neo4j 설정 파일 경로
         """
+        # 환경변수 먼저 로드
         load_dotenv()
+        
+        # 설정 로드
         self.config = self._load_config(config_path)
         self.driver = None
         self.schema = LegalGraphSchema()
+        
+        # Neo4j 연결 시도
         self._connect()
+        
+        # 스키마 초기화
+        self.initialize_schema()
         
     def _load_config(self, config_path: str) -> Dict:
         """설정 파일 로드"""
         try:
-            with open(config_path, 'r', encoding='utf-8') as file:
-                return yaml.safe_load(file)
-        except FileNotFoundError:
-            logger.warning(f"설정 파일을 찾을 수 없습니다: {config_path}. 환경변수 사용")
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                    # 환경변수 치환
+                    content = content.replace('${NEO4J_URI}', os.getenv('NEO4J_URI', ''))
+                    content = content.replace('${NEO4J_USER}', os.getenv('NEO4J_USER', ''))
+                    content = content.replace('${NEO4J_PASSWORD}', os.getenv('NEO4J_PASSWORD', ''))
+                    content = content.replace('${NEO4J_DATABASE}', os.getenv('NEO4J_DATABASE', ''))
+                    
+                    config = yaml.safe_load(content)
+                    
+                    # 연결 설정이 올바른지 확인
+                    conn = config.get('connection', {})
+                    if not conn.get('uri') or not conn.get('username') or not conn.get('password'):
+                        logger.warning("YAML 설정이 불완전합니다. 환경변수 설정을 사용합니다.")
+                        return self._get_env_config()
+                    
+                    return config
+            else:
+                logger.warning(f"설정 파일을 찾을 수 없습니다: {config_path}. 환경변수 사용")
+                return self._get_env_config()
+        except Exception as e:
+            logger.warning(f"설정 파일 로드 실패: {e}. 환경변수 사용")
             return self._get_env_config()
     
     def _get_env_config(self) -> Dict:
@@ -130,6 +157,17 @@ class LegalGraphManager:
         if self.driver:
             self.driver.close()
             logger.info("Neo4j 연결 종료")
+    
+    def execute_query(self, query: str, parameters: Dict = None) -> List[Dict]:
+        """Neo4j 쿼리 실행"""
+        try:
+            with self.driver.session() as session:
+                result = session.run(query, parameters or {})
+                return [record.data() for record in result]
+        except Exception as e:
+            logger.error(f"쿼리 실행 실패: {e}")
+            logger.error(f"쿼리: {query}")
+            raise
     
     def initialize_schema(self):
         """그래프 스키마 초기화"""
@@ -220,19 +258,39 @@ class LegalGraphManager:
         with self.driver.session() as session:
             if properties is None:
                 properties = {}
-                
-            query = f"""
-            MATCH (from_node), (to_node)
-            WHERE id(from_node) = $from_id AND id(to_node) = $to_id
-            CREATE (from_node)-[r:{rel_type} $properties]->(to_node)
-            RETURN type(r) as relationship_type
-            """
             
-            result = session.run(query, {
-                "from_id": int(from_node_id),
-                "to_id": int(to_node_id),
-                "properties": properties
-            })
+            # 노드 ID가 숫자인지 문자열인지 확인
+            try:
+                from_id = int(from_node_id)
+                to_id = int(to_node_id)
+                # 숫자 ID인 경우 (내부 노드 ID)
+                query = f"""
+                MATCH (from_node), (to_node)
+                WHERE id(from_node) = $from_id AND id(to_node) = $to_id
+                CREATE (from_node)-[r:{rel_type} $properties]->(to_node)
+                RETURN type(r) as relationship_type
+                """
+                params = {
+                    "from_id": from_id,
+                    "to_id": to_id,
+                    "properties": properties
+                }
+            except ValueError:
+                # 문자열 ID인 경우 (law_id 등)
+                query = f"""
+                MATCH (from_node), (to_node)
+                WHERE (id(from_node) = $from_id OR from_node.law_id = $from_id) 
+                  AND (id(to_node) = $to_id OR to_node.law_id = $to_id)
+                CREATE (from_node)-[r:{rel_type} $properties]->(to_node)
+                RETURN type(r) as relationship_type
+                """
+                params = {
+                    "from_id": from_node_id,
+                    "to_id": to_node_id,
+                    "properties": properties
+                }
+            
+            result = session.run(query, params)
             
             if result.single():
                 logger.info(f"관계 생성: {rel_type}")
