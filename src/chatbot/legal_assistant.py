@@ -62,8 +62,25 @@ class LegalAssistant:
             return graph_manager, rag_chain, True
             
         except Exception as e:
-            logger.error(f"시스템 초기화 실패: {e}")
-            return None, None, False
+            logger.error(f"그래프 RAG 시스템 초기화 실패: {e}")
+            logger.info("기본 Gemini AI 모드로 전환합니다.")
+            
+            # 기본 Gemini AI만 사용하는 백업 체인
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                from dotenv import load_dotenv
+                load_dotenv()
+                
+                backup_llm = ChatGoogleGenerativeAI(
+                    model="gemini-1.5-flash",
+                    google_api_key=os.getenv("GOOGLE_API_KEY")
+                )
+                
+                return None, backup_llm, True
+                
+            except Exception as e2:
+                logger.error(f"백업 시스템 초기화도 실패: {e2}")
+                return None, None, False
     
     def setup_page_config(self):
         """페이지 설정"""
@@ -208,12 +225,28 @@ class LegalAssistant:
     
     def render_chat_interface(self):
         """채팅 인터페이스 렌더링"""
+        # 디버깅 정보 (개발용)
+        if st.checkbox("🔧 디버그 모드", key="debug_mode"):
+            st.write(f"**채팅 기록 수:** {len(st.session_state.chat_history)}")
+            if st.session_state.chat_history:
+                st.write("**최근 메시지:**")
+                for i, msg in enumerate(st.session_state.chat_history[-3:]):
+                    st.json({f"메시지 {i+1}": {
+                        "role": msg.get("role", "unknown"),
+                        "content_length": len(str(msg.get("content", ""))),
+                        "confidence": msg.get("confidence", "N/A"),
+                        "mode": msg.get("mode", "normal")
+                    }})
+        
         # 채팅 기록 표시
         chat_container = st.container()
         
         with chat_container:
-            for message in st.session_state.chat_history:
-                self.render_message(message)
+            if not st.session_state.chat_history:
+                st.info("👋 안녕하세요! 도시정비사업 관련 질문을 해주세요.")
+            else:
+                for message in st.session_state.chat_history:
+                    self.render_message(message)
         
         # 질의 입력
         st.markdown("---")
@@ -233,58 +266,53 @@ class LegalAssistant:
         # Enter 키 또는 버튼 클릭 시 처리
         if send_button and user_input.strip():
             self.process_query(user_input.strip())
+            # 입력창 초기화를 위해 rerun
             st.rerun()
     
     def render_message(self, message: Dict[str, Any]):
         """개별 메시지 렌더링"""
         if message["role"] == "user":
-            st.markdown(f"""
-            <div class="chat-message user-message">
-                <strong>👤 사용자:</strong><br>
-                {message["content"]}
-            </div>
-            """, unsafe_allow_html=True)
+            # 사용자 메시지를 일반 st.chat_message로 표시
+            with st.chat_message("user"):
+                st.write(f"👤 **사용자:** {message['content']}")
         
         elif message["role"] == "assistant":
-            # 신뢰도에 따른 CSS 클래스
-            confidence = message.get("confidence", 0)
-            if confidence >= 0.8:
-                confidence_class = "confidence-high"
-                confidence_emoji = "🟢"
-            elif confidence >= 0.6:
-                confidence_class = "confidence-medium"
-                confidence_emoji = "🟡"
-            else:
-                confidence_class = "confidence-low"
-                confidence_emoji = "🔴"
-            
-            st.markdown(f"""
-            <div class="chat-message assistant-message">
-                <strong>🤖 AI 어시스턴트:</strong>
-                <span class="{confidence_class}">{confidence_emoji} 신뢰도: {confidence:.2f}</span><br><br>
-                {message["content"]}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 출처 정보 표시
-            if "sources" in message and message["sources"]:
-                st.markdown("**📚 참고 법령 조문:**")
-                for i, source in enumerate(message["sources"][:3], 1):
-                    with st.expander(f"{i}. {source.get('law_name', '')} {source.get('article_number', '')}", expanded=False):
-                        st.markdown(f"""
-                        <div class="source-box">
-                            <strong>조문:</strong> {source.get('article_number', '')}<br>
-                            <strong>법령:</strong> {source.get('law_name', '')}<br>
-                            <strong>내용:</strong> {source.get('content_preview', '')}<br>
-                            <strong>유사도:</strong> {source.get('similarity_score', 0):.3f}
-                        </div>
-                        """, unsafe_allow_html=True)
-            
-            # 관련 조문 추천
-            if "related_articles" in message and message["related_articles"]:
-                st.markdown("**🔗 관련 조문 추천:**")
-                for related in message["related_articles"][:3]:
-                    st.info(f"**{related.get('article_number', '')}**: {related.get('content_preview', '')}")
+            # AI 응답 메시지
+            with st.chat_message("assistant"):
+                # 신뢰도 표시
+                confidence = message.get("confidence", 0)
+                if confidence >= 0.8:
+                    confidence_emoji = "🟢"
+                elif confidence >= 0.6:
+                    confidence_emoji = "🟡"
+                else:
+                    confidence_emoji = "🔴"
+                
+                # 메시지 내용 표시
+                st.write(f"🤖 **AI 어시스턴트** {confidence_emoji} (신뢰도: {confidence:.2f})")
+                st.write(message.get("content", "응답 내용이 없습니다."))
+                
+                # 모드 표시 (테스트/백업 모드인 경우)
+                if message.get("mode") == "demo":
+                    st.info("💡 **테스트 모드**: 현재 데모 응답입니다.")
+                elif message.get("mode") == "backup":
+                    st.info("💡 **백업 모드**: Neo4j 연결 실패로 기본 AI만 사용 중입니다.")
+                
+                # 출처 정보 표시 (있는 경우)
+                if "sources" in message and message["sources"]:
+                    st.markdown("**📚 참고 법령 조문:**")
+                    for i, source in enumerate(message["sources"][:3], 1):
+                        with st.expander(f"{i}. {source.get('law_name', '')} {source.get('article_number', '')}", expanded=False):
+                            st.write(f"**조문:** {source.get('article_number', '')}")
+                            st.write(f"**법령:** {source.get('law_name', '')}")
+                            st.write(f"**내용:** {source.get('content_preview', '')}")
+                            st.write(f"**유사도:** {source.get('similarity_score', 0):.3f}")
+                
+                # 관련 조문 추천 (있는 경우)
+                if "related_articles" in message and message["related_articles"]:
+                    st.markdown("**🔗 관련 조문 추천:**")
+                    for related in message["related_articles"][:3]:
+                        st.info(f"**{related.get('article_number', '')}**: {related.get('content_preview', '')}")
     
     def process_query(self, query: str):
         """사용자 질의 처리"""
@@ -302,27 +330,92 @@ class LegalAssistant:
         # 로딩 표시
         with st.spinner("법령 검색 중..."):
             try:
-                # RAG 체인 실행
-                result = st.session_state.rag_chain.query_with_sources(query)
-                
-                # 어시스턴트 응답 추가
-                assistant_message = {
-                    "role": "assistant",
-                    "content": result["answer"],
-                    "confidence": result["confidence"],
-                    "sources": result["sources"],
-                    "related_articles": result.get("related_articles", []),
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-                st.session_state.chat_history.append(assistant_message)
-                
-                # 로그 기록
-                logger.info(f"질의 처리 완료: {query[:50]}... (신뢰도: {result['confidence']})")
+                # RAG 체인이 있는 경우 (그래프 모드)
+                if hasattr(st.session_state.rag_chain, 'query_with_sources'):
+                    result = st.session_state.rag_chain.query_with_sources(query)
+                    
+                    # 어시스턴트 응답 추가
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": result["answer"],
+                        "confidence": result["confidence"],
+                        "sources": result["sources"],
+                        "related_articles": result.get("related_articles", []),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    st.session_state.chat_history.append(assistant_message)
+                    logger.info(f"그래프 RAG 질의 처리 완료: {query[:50]}...")
+                    
+                else:
+                    # 백업 모드 (기본 Gemini만 사용)
+                    try:
+                        prompt = f"""당신은 도시정비사업 법령 전문가입니다. 다음 질문에 대해 도시 및 주거환경정비법, 소규모주택정비법 등 관련 법령을 바탕으로 정확하고 자세한 답변을 해주세요.
+
+질문: {query}
+
+답변 시 관련 법령 조문을 명시하고, 구체적이고 실무에 도움이 되는 정보를 제공해주세요."""
+                        
+                        # 문자열로 직접 호출
+                        response = st.session_state.rag_chain.invoke(prompt)
+                        
+                        # 어시스턴트 응답 추가 (백업 모드)
+                        assistant_message = {
+                            "role": "assistant",
+                            "content": response.content if hasattr(response, 'content') else str(response),
+                            "confidence": 0.7,  # 백업 모드 기본 신뢰도
+                            "sources": [],
+                            "related_articles": [],
+                            "mode": "backup",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        
+                    except Exception as api_error:
+                        # API 키 오류 시 더미 응답 제공
+                        logger.error(f"Gemini API 오류: {api_error}")
+                        
+                        # 도시정비사업 관련 더미 응답 생성
+                        dummy_responses = {
+                            "재개발": "재개발 조합 설립을 위해서는 도시 및 주거환경정비법 제16조에 따라 토지면적의 3분의 2 이상, 토지소유자 수의 3분의 2 이상의 동의가 필요합니다. 또한 조합설립인가 신청서와 관련 서류를 시장·군수에게 제출해야 합니다.",
+                            "소규모": "소규모주택정비법에 따른 소규모재개발사업에서는 현금청산 대상자 중 일정 요건을 충족하는 경우 현금청산에서 제외될 수 있습니다. 구체적으로는 해당 지역 거주기간, 소유 기간 등이 고려됩니다.",
+                            "정비사업": "정비사업 시행인가는 도시 및 주거환경정비법 제66조에 따라 사업시행자가 시장·군수에게 신청하며, 관련 서류 검토 후 인가 여부가 결정됩니다.",
+                            "가로주택": "가로주택정비사업은 노후·불량건축물이 밀집한 지역에서 소규모로 주거환경을 개선하는 사업으로, 관련 법령에서 정한 요건을 충족해야 합니다.",
+                            "빈집": "빈집정비특례법에 따라 장기간 방치된 빈집에 대해서는 특례적인 정비 절차가 적용될 수 있습니다."
+                        }
+                        
+                        # 질의와 관련된 키워드 찾기
+                        response_content = "죄송합니다. 현재 AI 서비스에 일시적인 문제가 있습니다."
+                        for keyword, response in dummy_responses.items():
+                            if keyword in query:
+                                response_content = f"[테스트 모드] {response}\n\n※ 현재 테스트 모드로 운영 중입니다. 정확한 법령 정보는 관련 법령을 직접 확인해주세요."
+                                break
+                        
+                        assistant_message = {
+                            "role": "assistant",
+                            "content": response_content,
+                            "confidence": 0.5,  # 더미 모드 신뢰도
+                            "sources": [],
+                            "related_articles": [],
+                            "mode": "demo",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    
+                    st.session_state.chat_history.append(assistant_message)
+                    logger.info(f"백업/테스트 모드 질의 처리 완료: {query[:50]}...")
                 
             except Exception as e:
                 st.error(f"질의 처리 중 오류가 발생했습니다: {str(e)}")
                 logger.error(f"질의 처리 오류: {e}")
+                
+                # 기본 에러 응답
+                error_message = {
+                    "role": "assistant", 
+                    "content": "죄송합니다. 현재 시스템에 문제가 있어 답변을 드릴 수 없습니다. 잠시 후 다시 시도해주세요.",
+                    "confidence": 0.0,
+                    "sources": [],
+                    "timestamp": datetime.now().isoformat()
+                }
+                st.session_state.chat_history.append(error_message)
     
     def export_chat_history(self):
         """채팅 기록 내보내기"""
@@ -350,9 +443,6 @@ class LegalAssistant:
     
     def run(self):
         """어시스턴트 실행"""
-        # 페이지 설정
-        self.setup_page_config()
-        
         # 시스템 구성 요소 로드
         if not st.session_state.system_ready:
             with st.spinner("시스템 초기화 중..."):
@@ -385,6 +475,68 @@ class LegalAssistant:
 
 def main():
     """메인 함수"""
+    # 페이지 설정을 가장 먼저 수행
+    st.set_page_config(
+        page_title="도시정비 법령 전문 AI",
+        page_icon="🏗️",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # CSS 스타일링
+    st.markdown("""
+    <style>
+    .main-header {
+        background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
+        padding: 20px;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    
+    .chat-message {
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+        border-left: 5px solid #3B82F6;
+    }
+    
+    .user-message {
+        background-color: #EFF6FF;
+        border-left-color: #3B82F6;
+    }
+    
+    .assistant-message {
+        background-color: #F0FDF4;
+        border-left-color: #10B981;
+    }
+    
+    .source-box {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+    }
+    
+    .confidence-high {
+        color: #10B981;
+        font-weight: bold;
+    }
+    
+    .confidence-medium {
+        color: #F59E0B;
+        font-weight: bold;
+    }
+    
+    .confidence-low {
+        color: #EF4444;
+        font-weight: bold;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     try:
         assistant = LegalAssistant()
         assistant.run()

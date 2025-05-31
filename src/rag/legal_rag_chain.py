@@ -1,6 +1,6 @@
 """
-도시정비 법령 Graph RAG 체인
-Neo4j 그래프 검색 + LangChain + Gemini 통합 시스템
+도시정비사업 법령 전문 RAG 체인
+Neo4j 그래프와 Google Gemini를 활용한 질의응답 시스템
 """
 
 import os
@@ -13,7 +13,7 @@ from langchain.schema import BaseRetriever, Document
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
