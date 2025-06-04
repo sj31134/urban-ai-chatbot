@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import BaseRetriever, Document
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain.callbacks.manager import CallbackManagerForRetrieverRun
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from sentence_transformers import SentenceTransformer
 import numpy as np
@@ -26,8 +26,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class LegalGraphRetriever(BaseRetriever):
-    """Neo4j 그래프 기반 법령 검색기"""
+class LegalGraphRetriever:
+    """Neo4j 그래프 기반 법령 검색기 (BaseRetriever 없이 자체 구현)"""
     
     def __init__(self, graph_manager: LegalGraphManager, 
                  embedding_model: Optional[str] = None,
@@ -42,16 +42,19 @@ class LegalGraphRetriever(BaseRetriever):
             similarity_threshold: 유사도 임계값
             max_results: 최대 검색 결과 수
         """
-        super().__init__()
         self.graph_manager = graph_manager
         self.similarity_threshold = similarity_threshold
         self.max_results = max_results
         
         # 임베딩 모델 초기화
         model_name = embedding_model or os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        # bge-m3가 아닌 안정적인 모델 사용
+        if "bge-m3" in model_name:
+            model_name = "sentence-transformers/all-MiniLM-L6-v2"
+            
         self.embedder = SentenceTransformer(model_name)
         
-    def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
+    def get_relevant_documents(self, query: str) -> List[Document]:
         """질의와 관련된 법령 문서 검색"""
         
         # 1. 키워드 기반 직접 검색
@@ -243,39 +246,32 @@ class LegalRAGChain:
     
     def __init__(self, graph_manager: LegalGraphManager):
         """
-        RAG 체인 초기화
+        법령 RAG 체인 초기화
         
         Args:
-            graph_manager: Neo4j 그래프 관리자
+            graph_manager: Neo4j 그래프 관리자 인스턴스
         """
+        # 환경변수 로드
         load_dotenv()
-        self.graph_manager = graph_manager
         
-        # Gemini LLM 초기화
+        # LLM 초기화 (Google Gemini)
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        
+        if not google_api_key:
+            raise ValueError("GOOGLE_API_KEY 환경변수가 설정되지 않았습니다.")
+        
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
-            temperature=0.1,
-            max_tokens=2048
+            model=model_name,
+            google_api_key=google_api_key,
+            temperature=0.1
         )
         
-        # 검색기 초기화
+        # 검색기 초기화 (자체 구현)
         self.retriever = LegalGraphRetriever(graph_manager)
         
         # 프롬프트 템플릿 설정
         self.prompt_template = self._create_prompt_template()
-        
-        # RAG 체인 구성
-        self.rag_chain = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            chain_type="stuff",
-            retriever=self.retriever,
-            chain_type_kwargs={
-                "prompt": self.prompt_template,
-                "verbose": True
-            },
-            return_source_documents=True
-        )
     
     def _create_prompt_template(self) -> PromptTemplate:
         """법령 전문 프롬프트 템플릿 생성"""
@@ -304,20 +300,28 @@ class LegalRAGChain:
     def query_with_sources(self, question: str) -> Dict[str, Any]:
         """출처 포함 법령 검색 및 답변 생성"""
         try:
-            # RAG 체인 실행
-            result = self.rag_chain({"query": question})
+            # 1. 관련 문서 검색
+            source_documents = self.retriever.get_relevant_documents(question)
             
-            # 답변 및 출처 추출
-            answer = result["result"]
-            source_documents = result["source_documents"]
+            # 2. 컨텍스트 생성
+            context = "\\n\\n".join([
+                f"[{doc.metadata.get('law_name', '법령명 미상')} {doc.metadata.get('article_number', 'N/A')}]\\n{doc.page_content}"
+                for doc in source_documents
+            ])
             
-            # 출처 정리
+            # 3. LLM으로 답변 생성
+            prompt = self.prompt_template.format(context=context, question=question)
+            
+            # 문자열로 LLM 호출
+            answer = self.llm.invoke(prompt).content
+            
+            # 4. 출처 정리
             sources = self._format_sources(source_documents)
             
-            # 신뢰도 계산
+            # 5. 신뢰도 계산
             confidence = self._calculate_confidence(source_documents, answer)
             
-            # 관련 조문 추천
+            # 6. 관련 조문 추천
             related_articles = self._get_related_recommendations(source_documents)
             
             response = {

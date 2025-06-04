@@ -46,7 +46,11 @@ class LegalAssistant:
     def __init__(self):
         """어시스턴트 초기화"""
         self.initialize_session_state()  # 세션 상태 초기화
-        self.load_components()  # 시스템 구성 요소 로드
+        
+        # load_components의 결과를 세션 상태에 반영
+        if not st.session_state.get('system_components_loaded', False): # 한 번만 로드하도록 플래그 사용
+            self._load_and_store_components()
+            st.session_state.system_components_loaded = True
     
     def initialize_session_state(self):
         """Streamlit 세션 상태 초기화"""
@@ -58,43 +62,68 @@ class LegalAssistant:
         
         if 'rag_chain' not in st.session_state:  # RAG 체인이 없으면
             st.session_state.rag_chain = None  # None으로 초기화
-        
+
+        if 'backup_llm' not in st.session_state: # backup_llm도 세션 상태로 관리
+            st.session_state.backup_llm = None
+
         if 'system_ready' not in st.session_state:  # 시스템 준비 상태가 없으면
             st.session_state.system_ready = False  # False로 초기화
-    
-    @st.cache_resource
-    def load_components(_self):
-        """시스템 구성 요소 로드 (캐시 활용)"""
+        
+        if 'system_components_loaded' not in st.session_state: # 로드 여부 플래그
+            st.session_state.system_components_loaded = False
+
+    def _load_and_store_components(self):
+        """시스템 구성 요소 로드 및 세션 상태 저장"""
         try:
-            # Neo4j 그래프 관리자 초기화
-            graph_manager = LegalGraphManager()  # Neo4j 연결 및 관리 객체 생성
+            logger.info("LegalGraphManager 초기화 시작...")
+            graph_manager = LegalGraphManager()
+            logger.info("LegalGraphManager 초기화 완료.")
             
-            # RAG 체인 초기화
-            rag_chain = LegalRAGChain(graph_manager)  # RAG 파이프라인 객체 생성
+            logger.info("LegalRAGChain 초기화 시작...")
+            rag_chain = LegalRAGChain(graph_manager)
+            logger.info("LegalRAGChain 초기화 완료.")
             
-            return graph_manager, rag_chain, True  # 성공 시 객체들과 True 반환
+            st.session_state.graph_manager = graph_manager
+            st.session_state.rag_chain = rag_chain
+            st.session_state.system_ready = True
+            logger.info("그래프 RAG 시스템 초기화 성공.")
             
-        except Exception as e:  # 그래프 RAG 시스템 초기화 실패 시
-            logger.error(f"그래프 RAG 시스템 초기화 실패: {e}")  # 에러 로그 기록
-            logger.info("기본 Gemini AI 모드로 전환합니다.")  # 정보 로그 기록
+        except Exception as e:
+            logger.error(f"그래프 RAG 시스템 초기화 중 예외 발생 타입: {type(e)}")
+            logger.error(f"그래프 RAG 시스템 초기화 실패 메시지: {str(e)}")
+            import traceback
+            logger.error(f"그래프 RAG 시스템 Traceback: {traceback.format_exc()}")
             
-            # 기본 Gemini AI만 사용하는 백업 체인
+            st.session_state.graph_manager = None # 명시적 None 할당
+            st.session_state.rag_chain = None     # 명시적 None 할당
+            logger.info("기본 Gemini AI 모드로 전환합니다.")
+            
             try:
-                from langchain_google_genai import ChatGoogleGenerativeAI  # Gemini AI 클래스 import
-                from dotenv import load_dotenv  # 환경변수 로드 함수
-                load_dotenv()  # 환경변수 다시 로드
-                
-                backup_llm = ChatGoogleGenerativeAI(  # 백업용 Gemini LLM 생성
-                    model="gemini-1.5-flash",  # 모델명 지정
-                    google_api_key=os.getenv("GOOGLE_API_KEY"),  # API 키 설정
-                    temperature=0.1  # 생성 온도 설정
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                # load_dotenv() # 이미 상단에서 호출되었거나, LegalGraphManager 등에서 호출될 수 있음
+
+                backup_llm_model = os.getenv("FALLBACK_GEMINI_MODEL", "gemini-1.5-flash")
+                google_api_key = os.getenv("GOOGLE_API_KEY")
+
+                if not google_api_key:
+                    logger.error("GOOGLE_API_KEY 환경변수가 설정되지 않았습니다. 백업 LLM을 초기화할 수 없습니다.")
+                    raise ValueError("GOOGLE_API_KEY가 없습니다.")
+
+                logger.info(f"백업 LLM ({backup_llm_model}) 초기화 시작...")
+                backup_llm = ChatGoogleGenerativeAI(
+                    model=backup_llm_model,
+                    google_api_key=google_api_key,
+                    temperature=0.1
                 )
+                st.session_state.backup_llm = backup_llm
+                st.session_state.system_ready = True # 백업 모드도 준비된 상태
+                logger.info(f"백업 LLM ({backup_llm_model}) 초기화 성공.")
                 
-                return None, backup_llm, True  # 백업 모드로 성공 반환
-                
-            except Exception as e2:  # 백업 시스템도 실패 시
-                logger.error(f"백업 시스템 초기화도 실패: {e2}")  # 에러 로그 기록
-                return None, None, False  # 완전 실패 반환
+            except Exception as e2:
+                logger.error(f"백업 Gemini LLM 초기화 실패: {e2}")
+                logger.error(f"백업 LLM Traceback: {traceback.format_exc()}")
+                st.session_state.backup_llm = None
+                st.session_state.system_ready = False # 백업 LLM도 실패하면 시스템 미준비
     
     def setup_page_config(self):
         """페이지 설정"""
@@ -344,7 +373,7 @@ class LegalAssistant:
                     logger.info(f"그래프 RAG 모드 질의 처리 완료: {query[:50]}...")  # 정보 로그 기록
                 
                 # 백업 모드 (기본 Gemini AI만 사용)
-                elif st.session_state.rag_chain:
+                elif st.session_state.backup_llm:
                     # 도시정비법 관련 전문 프롬프트
                     backup_prompt = f"""당신은 도시정비사업 법령 전문가입니다. 다음 질문에 대해 정확하고 구체적인 답변을 제공해주세요.
 
@@ -366,7 +395,7 @@ class LegalAssistant:
                     
                     try:
                         # Gemini로 답변 생성 (문자열로만 전달)
-                        response = st.session_state.rag_chain.invoke(backup_prompt)
+                        response = st.session_state.backup_llm.invoke(backup_prompt)
                         
                         # 답변 텍스트 추출
                         if hasattr(response, 'content'):
@@ -485,17 +514,10 @@ class LegalAssistant:
         # 시스템 구성 요소 로드
         if not st.session_state.system_ready:  # 시스템이 준비되지 않았으면
             with st.spinner("시스템 초기화 중..."):  # 로딩 스피너와 함께
-                graph_manager, rag_chain, ready = self.load_components()  # 구성 요소 로드
-                
-                if ready:  # 로드가 성공했으면
-                    st.session_state.graph_manager = graph_manager  # 그래프 매니저 저장
-                    st.session_state.rag_chain = rag_chain  # RAG 체인 저장
-                    st.session_state.system_ready = True  # 시스템 준비 상태로 변경
-                    st.success("시스템 초기화 완료!")  # 성공 메시지 표시
-                    st.rerun()  # 페이지 새로고침
-                else:  # 로드가 실패했으면
-                    st.error("시스템 초기화에 실패했습니다. 설정을 확인해주세요.")  # 에러 메시지 표시
-                    st.stop()  # 실행 중단
+                self._load_and_store_components()  # 구성 요소 로드
+                st.session_state.system_ready = True  # 시스템 준비 상태로 변경
+                st.success("시스템 초기화 완료!")  # 성공 메시지 표시
+                st.rerun()  # 페이지 새로고침
         
         # 헤더 렌더링
         self.render_header()  # 페이지 헤더 렌더링

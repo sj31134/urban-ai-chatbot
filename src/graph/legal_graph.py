@@ -76,12 +76,12 @@ class LegalGraphSchema:
 class LegalGraphManager:
     """법령 지식 그래프 관리 클래스"""
     
-    def __init__(self, config_path: str = "config/neo4j_config.yaml"):
+    def __init__(self, config_path: str = "config/system_config.yaml"):
         """
         Neo4j 그래프 관리자 초기화
         
         Args:
-            config_path: Neo4j 설정 파일 경로
+            config_path: 시스템 설정 파일 경로 (통합 설정)
         """
         # 환경변수 먼저 로드
         load_dotenv()
@@ -398,4 +398,4 @@ if __name__ == "__main__":
     graph_manager.create_law_node(sample_law)
     
     # 연결 종료
-    graph_manager.close() 
+    graph_manager.close()
