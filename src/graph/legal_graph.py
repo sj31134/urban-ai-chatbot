@@ -376,6 +376,63 @@ class LegalGraphManager:
             result = session.run(query, {"references": references})
             return [dict(record) for record in result]
 
+    def get_all_laws(self) -> List[Dict]:
+        """모든 법령 조회"""
+        try:
+            with self.driver.session() as session:
+                query = """
+                MATCH (l:Law)
+                RETURN l.law_id as law_id,
+                       l.name as name,
+                       l.category as category,
+                       l.effective_date as effective_date,
+                       l.status as status
+                ORDER BY l.name
+                """
+                result = session.run(query)
+                return [dict(record) for record in result]
+        except Exception as e:
+            logger.error(f"법령 조회 실패: {e}")
+            return []
+
+    def get_all_articles(self) -> List[Dict]:
+        """모든 조문 조회"""
+        try:
+            with self.driver.session() as session:
+                query = """
+                MATCH (a:Article)-[:BELONGS_TO]->(l:Law)
+                RETURN a.law_id as law_id,
+                       a.article_number as article_number,
+                       a.content as content,
+                       a.section as section,
+                       l.name as law_name
+                ORDER BY l.name, a.article_number
+                """
+                result = session.run(query)
+                return [dict(record) for record in result]
+        except Exception as e:
+            logger.error(f"조문 조회 실패: {e}")
+            return []
+
+    def get_stats(self) -> Dict:
+        """그래프 데이터베이스 통계"""
+        try:
+            with self.driver.session() as session:
+                # 노드 통계
+                node_stats = {}
+                for node_type in ["Law", "Article", "Ordinance", "Precedent"]:
+                    query = f"MATCH (n:{node_type}) RETURN count(n) as count"
+                    result = session.run(query)
+                    node_stats[node_type] = result.single()["count"]
+                
+                return {
+                    "nodes": node_stats,
+                    "total_nodes": sum(node_stats.values())
+                }
+        except Exception as e:
+            logger.error(f"통계 조회 실패: {e}")
+            return {"nodes": {}, "total_nodes": 0}
+
 
 # 사용 예시
 if __name__ == "__main__":

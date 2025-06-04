@@ -438,6 +438,14 @@ class EnhancedRAGPipeline:
             "search_engine": "하이브리드 (벡터 + 키워드) 검색"
         }
 
+    def get_embedding_count(self) -> int:
+        """임베딩된 청크 수 반환"""
+        try:
+            return self.embedding_manager.collection.count()
+        except Exception as e:
+            logger.error(f"임베딩 개수 조회 실패: {e}")
+            return 0
+
 
 # 사용 예시
 if __name__ == "__main__":
