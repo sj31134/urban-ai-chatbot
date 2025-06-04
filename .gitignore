@@ -108,4 +108,4 @@ docs/_build/
 
 # 패키지 관리
 *.pkg
-*.dmg 
+*.dmg backup_*/
