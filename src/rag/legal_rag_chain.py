@@ -5,6 +5,7 @@ Neo4j 그래프와 Google Gemini를 활용한 질의응답 시스템
 
 import os
 import logging
+import re
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from pydantic import Field
 
 from src.graph.legal_graph import LegalGraphManager
 from dotenv import load_dotenv
@@ -29,10 +31,20 @@ logger = logging.getLogger(__name__)
 class LegalGraphRetriever(BaseRetriever):
     """Neo4j 그래프 기반 법령 검색기"""
     
+    # Pydantic v2 필드 정의
+    graph_manager: LegalGraphManager = Field(description="Neo4j 그래프 관리자")
+    similarity_threshold: float = Field(default=0.7, description="유사도 임계값")
+    max_results: int = Field(default=10, description="최대 검색 결과 수")
+    embedder: Any = Field(default=None, description="임베딩 모델")
+    
+    class Config:
+        arbitrary_types_allowed = True
+    
     def __init__(self, graph_manager: LegalGraphManager, 
                  embedding_model: Optional[str] = None,
                  similarity_threshold: float = 0.7,
-                 max_results: int = 10):
+                 max_results: int = 10,
+                 **kwargs):
         """
         그래프 검색기 초기화
         
@@ -42,14 +54,17 @@ class LegalGraphRetriever(BaseRetriever):
             similarity_threshold: 유사도 임계값
             max_results: 최대 검색 결과 수
         """
-        super().__init__()
-        self.graph_manager = graph_manager
-        self.similarity_threshold = similarity_threshold
-        self.max_results = max_results
-        
         # 임베딩 모델 초기화
         model_name = embedding_model or os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-        self.embedder = SentenceTransformer(model_name)
+        embedder = SentenceTransformer(model_name)
+        
+        super().__init__(
+            graph_manager=graph_manager,
+            similarity_threshold=similarity_threshold,
+            max_results=max_results,
+            embedder=embedder,
+            **kwargs
+        )
         
     def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
         """질의와 관련된 법령 문서 검색"""
@@ -213,7 +228,6 @@ class LegalGraphRetriever(BaseRetriever):
                 keywords.append(keyword)
         
         # 추가 키워드 추출 (명사 위주)
-        import re
         # 한글 명사 패턴 (2글자 이상)
         noun_pattern = r'[가-힣]{2,}'
         found_nouns = re.findall(noun_pattern, query)

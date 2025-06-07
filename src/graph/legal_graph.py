@@ -93,7 +93,14 @@ class LegalGraphManager:
         """설정 파일 로드"""
         try:
             with open(config_path, 'r', encoding='utf-8') as file:
-                return yaml.safe_load(file)
+                config_content = file.read()
+                # 환경변수 치환
+                import re
+                for env_var in re.findall(r'\$\{([^}]+)\}', config_content):
+                    env_value = os.getenv(env_var, "")
+                    config_content = config_content.replace(f"${{{env_var}}}", env_value)
+                
+                return yaml.safe_load(config_content)
         except FileNotFoundError:
             logger.warning(f"설정 파일을 찾을 수 없습니다: {config_path}. 환경변수 사용")
             return self._get_env_config()

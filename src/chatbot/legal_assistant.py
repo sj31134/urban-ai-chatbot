@@ -225,6 +225,13 @@ class LegalAssistant:
     
     def render_chat_interface(self):
         """채팅 인터페이스 렌더링"""
+        # 제안된 질의가 있는 경우 처리
+        if hasattr(st.session_state, 'suggested_query') and st.session_state.suggested_query:
+            suggested_query = st.session_state.suggested_query
+            del st.session_state.suggested_query
+            self.process_query(suggested_query)
+            st.rerun()
+        
         # 디버깅 정보 (개발용)
         if st.checkbox("🔧 디버그 모드", key="debug_mode"):
             st.write(f"**채팅 기록 수:** {len(st.session_state.chat_history)}")
@@ -303,10 +310,19 @@ class LegalAssistant:
                     st.markdown("**📚 참고 법령 조문:**")
                     for i, source in enumerate(message["sources"][:3], 1):
                         with st.expander(f"{i}. {source.get('law_name', '')} {source.get('article_number', '')}", expanded=False):
-                            st.write(f"**조문:** {source.get('article_number', '')}")
-                            st.write(f"**법령:** {source.get('law_name', '')}")
-                            st.write(f"**내용:** {source.get('content_preview', '')}")
-                            st.write(f"**유사도:** {source.get('similarity_score', 0):.3f}")
+                            col1, col2 = st.columns([3, 1])
+                            
+                            with col1:
+                                st.write(f"**조문:** {source.get('article_number', '')}")
+                                st.write(f"**법령:** {source.get('law_name', '')}")
+                                st.write(f"**내용:** {source.get('content_preview', '')}")
+                                st.write(f"**유사도:** {source.get('similarity_score', 0):.3f}")
+                            
+                            with col2:
+                                # 원문 파일 보기 버튼
+                                law_name = source.get('law_name', '')
+                                if st.button(f"📄 원문 보기", key=f"source_{i}_{hash(law_name)}"):
+                                    self.show_source_document(law_name, source.get('article_number', ''))
                 
                 # 관련 조문 추천 (있는 경우)
                 if "related_articles" in message and message["related_articles"]:
@@ -416,6 +432,96 @@ class LegalAssistant:
                     "timestamp": datetime.now().isoformat()
                 }
                 st.session_state.chat_history.append(error_message)
+    
+    def show_source_document(self, law_name: str, article_number: str):
+        """원문 법령 문서 표시"""
+        # 법령명과 파일명 매핑
+        law_file_mapping = {
+            "도시 및 주거환경정비법": "도시 및 주거환경정비법(법률)(제20955호)(20250520).doc",
+            "소규모주택정비법": "빈집 및 소규모주택 정비에 관한 특례법(법률)(제19225호)(20240215).doc",
+            "빈집 및 소규모주택 정비에 관한 특례법": "빈집 및 소규모주택 정비에 관한 특례법(법률)(제19225호)(20240215).doc",
+            "정비사업 계약업무 처리기준": "정비사업 계약업무 처리기준(국토교통부고시)(제2024-465호)(20240905).doc",
+            "서울특별시 도시재정비 촉진을 위한 조례": "서울특별시 도시재정비 촉진을 위한 조례(서울특별시조례)(제9639호)(20250519).doc",
+            "용인시 도시 및 주거환경정비 조례": "용인시 도시 및 주거환경정비 조례(경기도 용인시조례)(제2553호)(20240925).doc",
+            "성남시 도시계획 조례": "성남시 도시계획 조례(경기도 성남시조례)(제4203호)(20250310).doc",
+            "안양시 도시계획 조례": "안양시 도시계획 조례(경기도 안양시조례)(제3675호)(20240927).doc"
+        }
+        
+        # 부분 매칭으로 파일 찾기
+        matched_file = None
+        for law_key, filename in law_file_mapping.items():
+            if law_key in law_name or law_name in law_key:
+                matched_file = filename
+                break
+        
+        if matched_file:
+            file_path = f"data/laws/{matched_file}"
+            
+            # 파일 존재 확인
+            if os.path.exists(file_path):
+                # 모달 다이얼로그로 파일 정보 표시
+                with st.modal(f"📄 {law_name} 원문", width="large"):
+                    st.markdown(f"### 📋 **{law_name}**")
+                    st.markdown(f"**🔍 찾고 있는 조문:** {article_number}")
+                    st.markdown(f"**📁 파일명:** {matched_file}")
+                    
+                    st.divider()
+                    
+                    # 파일 다운로드 링크 제공
+                    try:
+                        with open(file_path, 'rb') as file:
+                            file_data = file.read()
+                            st.download_button(
+                                label="📥 원문 파일 다운로드",
+                                data=file_data,
+                                file_name=matched_file,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
+                    except Exception as e:
+                        st.error(f"파일 읽기 오류: {e}")
+                    
+                    # 관련 조문 정보 표시
+                    st.markdown("---")
+                    st.markdown(f"**🎯 이 법령의 {article_number} 관련 정보를 찾고 계신가요?**")
+                    st.info("원문 파일을 다운로드하여 상세한 조문 내용을 확인하실 수 있습니다.")
+                    
+                    # 관련 질의 제안
+                    if article_number:
+                        suggested_queries = [
+                            f"{law_name} {article_number}의 상세 내용은?",
+                            f"{article_number}와 관련된 다른 조문들은?",
+                            f"{law_name}의 {article_number} 시행규칙은?"
+                        ]
+                        
+                        st.markdown("**💡 관련 질의 제안:**")
+                        for query in suggested_queries:
+                            if st.button(query, key=f"suggest_{hash(query)}"):
+                                st.session_state.suggested_query = query
+                                st.rerun()
+            else:
+                st.error(f"파일을 찾을 수 없습니다: {file_path}")
+        else:
+            st.warning(f"'{law_name}'에 해당하는 원문 파일을 찾을 수 없습니다.")
+            
+            # 사용 가능한 법령 목록 표시
+            st.markdown("**📚 현재 사용 가능한 법령:**")
+            for law in law_file_mapping.keys():
+                st.markdown(f"- {law}")
+    
+    def get_file_content_preview(self, file_path: str, max_chars: int = 500) -> str:
+        """파일 내용 미리보기 (텍스트 파일의 경우)"""
+        try:
+            # .txt 파일인 경우에만 미리보기 제공
+            if file_path.endswith('.txt'):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if len(content) > max_chars:
+                        return content[:max_chars] + "..."
+                    return content
+            else:
+                return "파일 내용 미리보기는 텍스트 파일만 지원됩니다."
+        except Exception as e:
+            return f"파일 읽기 오류: {e}"
     
     def export_chat_history(self):
         """채팅 기록 내보내기"""

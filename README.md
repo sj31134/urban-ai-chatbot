@@ -198,6 +198,30 @@ urban_legal_rag/
    LANGCHAIN_TRACING_V2=true
    ```
 
+#### 🔧 전체 환경변수 목록
+
+```bash
+# 필수 설정
+GOOGLE_API_KEY=your_gemini_api_key_here
+
+# Neo4j 데이터베이스 (기본값 사용 가능)
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=legal_admin  
+NEO4J_PASSWORD=secure_password
+NEO4J_DATABASE=legal_graph
+
+# 임베딩 모델 (기본값: sentence-transformers/all-MiniLM-L6-v2)
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+# LangChain 디버깅 (선택사항)
+LANGCHAIN_API_KEY=your_langchain_api_key
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=urban-legal-rag
+
+# 로그 레벨 (INFO, DEBUG, WARNING, ERROR)
+LOG_LEVEL=INFO
+```
+
 ### 📊 Neo4j 데이터베이스 설정
 
 기본 설정 (Docker 자동 설치):
@@ -222,6 +246,25 @@ data/ordinances/
 ├── 서울시_도시재정비조례.pdf
 └── 부산시_도시재정비조례.pdf
 ```
+
+#### 🗄️ 현재 포함된 법령 데이터
+
+시스템에는 다음과 같은 법령 데이터가 포함되어 있습니다:
+
+**📖 주요 법령**
+- `도시 및 주거환경정비법(법률)(제20955호)(20250520).doc` - 메인 법령
+- `빈집 및 소규모주택 정비에 관한 특례법(법률)(제19225호)(20240215).doc`
+- `정비사업 계약업무 처리기준(국토교통부고시)(제2024-465호)(20240905).doc`
+
+**🏢 지자체 조례**
+- `서울특별시 도시재정비 촉진을 위한 조례(서울특별시조례)(제9639호)(20250519).doc`
+- `용인시 도시 및 주거환경정비 조례(경기도 용인시조례)(제2553호)(20240925).doc`
+- `성남시 도시계획 조례(경기도 성남시조례)(제4203호)(20250310).doc`
+- `안양시 도시계획 조례(경기도 안양시조례)(제3675호)(20240927).doc`
+
+**📋 별표 및 서식**
+- 각 조례별 별표 및 서식 파일 (총 20여개)
+- 건축물 용도별 세부 기준 및 서약서 양식 포함
 
 ## 💡 사용법
 
@@ -252,6 +295,15 @@ data/ordinances/
 2. **조례 관련 질의**:
    ```
    "서울시 도시재정비 조례의 특별한 규정은?"
+   ```
+
+3. **현행 법령 기반 실제 질의**:
+   ```
+   "소규모재개발사업에서 현금청산이 제외되는 경우는?"
+   "가로주택정비사업의 대상 요건은 무엇인가요?"
+   "자율주택정비사업 시행자는 누구인가요?"
+   "빈집정비사업의 특례 내용은?"
+   "용인시 도시 및 주거환경정비 조례의 특징은?"
    ```
 
 ### 📊 결과 해석
@@ -286,6 +338,37 @@ python -m pytest tests/test_legal_queries.py::TestPerformance -v
 - **성능 테스트**: 응답시간 < 30초
 - **출처 검증**: 조문 번호 형식 검증
 
+#### 📝 구체적 테스트 케이스 예시
+
+**도시정비법 테스트 (TestUrbanRedevelopmentQueries)**
+```python
+# URB_001: 재개발 조합 설립 요건
+# 예상 출처: 도시정비법 제24조, 제25조
+# 신뢰도 임계값: 0.85
+
+# URB_002: 정비사업 시행인가 신청 서류  
+# 예상 출처: 도시정비법 제28조, 시행령
+# 신뢰도 임계값: 0.80
+
+# URB_003: 현금청산 대상자
+# 예상 출처: 도시정비법 제49조, 제50조
+# 신뢰도 임계값: 0.88
+```
+
+**소규모주택정비법 테스트 (TestSmallScaleHousingQueries)**
+```python
+# SSH_001: 소규모재개발사업 현금청산 제외
+# SSH_002: 가로주택정비사업 대상 요건
+# SSH_003: 자율주택정비사업 시행자
+```
+
+**성능 및 엣지케이스 테스트**
+```python
+# 응답시간 테스트: 평균 5-10초, 최대 30초
+# 빈 질의, 매우 긴 질의, 무관한 질의 처리 테스트
+# 출처 형식 검증: "제X조", "법률 제X호" 패턴 확인
+```
+
 ## 📊 성능 정보
 
 ### ⚡ 응답 성능
@@ -302,6 +385,37 @@ python -m pytest tests/test_legal_queries.py::TestPerformance -v
 - **메모리 사용량**: 4-6GB
 - **디스크 사용량**: 5-8GB
 - **CPU 사용률**: 중간 부하
+
+### ⚙️ 성능 최적화 팁
+
+**🚀 검색 성능 향상**
+```python
+# 1. 임베딩 캐시 활용
+@st.cache_resource
+def load_embedding_model():
+    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+# 2. Neo4j 인덱스 최적화
+# 텍스트 검색용 fulltext 인덱스
+CREATE FULLTEXT INDEX article_content_search FOR (a:Article) ON EACH [a.content]
+
+# 3. 배치 처리로 그래프 구축 속도 향상
+def process_documents_batch(data_directory):
+    # 여러 문서를 배치로 처리하여 성능 향상
+```
+
+**💡 메모리 최적화**
+```python
+# 1. 텍스트 청킹 크기 조정
+chunk_size=512  # 기본값, 메모리 부족 시 256으로 감소
+chunk_overlap=50
+
+# 2. 검색 결과 수 제한
+max_results=10  # 기본값, 성능 향상을 위해 5로 감소 가능
+
+# 3. 유사도 임계값 조정
+similarity_threshold=0.7  # 기본값, 정확도 vs 성능 트레이드오프
+```
 
 ## 🤝 기여하기
 
@@ -320,10 +434,101 @@ python -m pytest tests/test_legal_queries.py::TestPerformance -v
 - 성능 최적화
 
 ### 📝 개발 가이드
-1. Fork 후 브랜치 생성
-2. 변경사항 구현
-3. 테스트 실행 및 통과 확인
-4. Pull Request 생성
+
+#### 🏗️ 코드 구조 이해
+
+**핵심 클래스 구조**
+```python
+# src/graph/legal_graph.py
+class LegalGraphManager:
+    # Neo4j 그래프 데이터베이스 관리
+    # 노드: Law, Article, Ordinance, Precedent
+    # 관계: REFERENCES, APPLIES_TO, IMPLEMENTS, BELONGS_TO, AMENDS
+
+# src/rag/legal_rag_chain.py  
+class LegalGraphRetriever:
+    # 3단계 하이브리드 검색
+    # 1. 키워드 검색 → 2. 그래프 확장 → 3. 임베딩 유사도
+
+class LegalRAGChain:
+    # Google Gemini와 검색 결과를 결합한 질의응답
+    # 신뢰도 계산 및 출처 검증 포함
+
+# src/rag/document_processor.py
+class LegalDocumentProcessor:
+    # PDF 문서 → 구조화된 그래프 데이터 변환
+    # 조문별 분할, 메타데이터 추출, 참조 관계 생성
+
+# src/chatbot/legal_assistant.py
+class LegalAssistant:
+    # Streamlit 웹 인터페이스
+    # 실시간 채팅, 결과 시각화, 세션 관리
+```
+
+#### 🔄 개발 워크플로우
+1. **환경 설정**
+   ```bash
+   git clone <repository>
+   cd urban_ai_chatbot
+   ./setup_legal_rag.sh
+   ```
+
+2. **브랜치 생성 및 개발**
+   ```bash
+   git checkout -b feature/new-feature
+   # 변경사항 구현
+   ```
+
+3. **테스트 실행**
+   ```bash
+   # 전체 테스트
+   python -m pytest tests/ -v
+   
+   # 특정 테스트 카테고리
+   python -m pytest tests/test_legal_queries.py::TestUrbanRedevelopmentQueries -v
+   ```
+
+4. **코드 품질 확인**
+   ```bash
+   # 코드 스타일 확인 (선택사항)
+   flake8 src/
+   black src/ --check
+   ```
+
+5. **Pull Request 생성**
+   - 테스트 통과 확인
+   - 변경사항 설명 포함
+   - 새로운 기능의 경우 테스트 케이스 추가
+
+#### 🎨 새로운 기능 추가 가이드
+
+**1. 새로운 법령 추가**
+```python
+# 1. data/laws/에 PDF 파일 배치
+# 2. LegalDocumentProcessor로 처리
+processor = LegalDocumentProcessor(graph_manager)
+result = processor.process_pdf_document("path/to/new_law.pdf", "LAW_CODE")
+
+# 3. 테스트 케이스 추가
+def test_new_law_queries(self):
+    # 새 법령 관련 테스트 케이스 작성
+```
+
+**2. 새로운 검색 알고리즘 추가**
+```python
+# LegalGraphRetriever에 새 검색 메서드 추가
+def _new_search_method(self, query: str) -> List[Document]:
+    # 새로운 검색 로직 구현
+    pass
+
+# _merge_and_rank_results에 가중치 추가
+weights = {
+    "keyword": 1.0,
+    "graph_expansion": 0.8, 
+    "semantic": 0.9,
+    "new_method": 0.7  # 새 방법 가중치
+}
+```
 
 ## 🔒 보안 및 준수사항
 
@@ -340,9 +545,99 @@ python -m pytest tests/test_legal_queries.py::TestPerformance -v
 ## 📞 지원 및 문의
 
 ### 🆘 문제 해결
-- **설치 관련**: `setup_legal_rag.sh` 로그 확인
+
+#### 🔧 일반적인 오류 및 해결책
+
+**1. Neo4j 연결 오류**
+```bash
+# 증상: ServiceUnavailable 또는 연결 거부
+# 원인: Docker 컨테이너 미실행 또는 인증 정보 불일치
+
+# 해결책:
+docker ps | grep neo4j-legal  # 컨테이너 상태 확인
+docker start neo4j-legal     # 컨테이너 시작
+docker logs neo4j-legal      # 로그 확인
+
+# .env 파일 확인
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=legal_admin
+NEO4J_PASSWORD=secure_password
+```
+
+**2. Google Gemini API 오류**
+```bash
+# 증상: API 키 오류 또는 할당량 초과
+# 원인: 잘못된 API 키 또는 요청 한도 초과
+
+# 해결책:
+# 1. API 키 확인
+echo $GOOGLE_API_KEY  # 환경변수 확인
+
+# 2. Google AI Studio에서 API 사용량 확인
+# https://aistudio.google.com/app/apikey
+
+# 3. 백업 모드로 전환 (legal_assistant.py에서 자동 처리)
+# Gemini API 실패 시 기본 응답 모드로 전환
+```
+
+**3. 임베딩 모델 로딩 오류**
+```bash
+# 증상: SentenceTransformer 로딩 실패
+# 원인: 네트워크 문제 또는 메모리 부족
+
+# 해결책:
+# 1. 경량 모델로 변경
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+# 2. 로컬 캐시 정리
+rm -rf ~/.cache/torch/sentence_transformers/
+
+# 3. 메모리 확인
+free -h  # 사용 가능한 메모리 확인 (최소 4GB 권장)
+```
+
+**4. PDF 문서 처리 오류**
+```bash
+# 증상: PDF 텍스트 추출 실패
+# 원인: 손상된 PDF 또는 인코딩 문제
+
+# 해결책:
+# 1. 이중 백업 시스템 (코드에서 자동 처리)
+# pypdf 실패 시 PyPDF2로 자동 전환
+
+# 2. 한글 인코딩 문제
+# UTF-8 인코딩으로 텍스트 처리 (코드에서 처리됨)
+
+# 3. 파일 권한 확인
+chmod 644 data/laws/*.doc
+```
+
+**5. Streamlit 실행 오류**
+```bash
+# 증상: 웹앱 시작 실패
+# 원인: 포트 충돌 또는 의존성 문제
+
+# 해결책:
+# 1. 포트 변경
+streamlit run src/chatbot/legal_assistant.py --server.port 8502
+
+# 2. 프로세스 확인
+lsof -i :8501  # 포트 사용 프로세스 확인
+kill -9 <PID>  # 필요시 프로세스 종료
+
+# 3. 가상환경 재설정
+deactivate
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### 📊 로그 파일 위치
+- **설치 관련**: `setup_legal_rag.sh` 실행 로그
 - **실행 오류**: `logs/legal_rag.log` 파일 확인
 - **Neo4j 연결**: http://localhost:7474 접속 확인
+- **Docker 로그**: `docker logs neo4j-legal`
 
 ### 📧 연락처
 - **이슈 등록**: GitHub Issues
