@@ -275,6 +275,17 @@ class LegalAssistant:
             self.process_query(user_input.strip())
             # 입력창 초기화를 위해 rerun
             st.rerun()
+        
+        # 원문 정보 표시 (별도 영역)
+        if hasattr(st.session_state, 'show_source_info') and st.session_state.show_source_info:
+            st.markdown("---")
+            source_info = st.session_state.show_source_info
+            self.show_source_document(source_info['law_name'], source_info['article_number'])
+            
+            # 닫기 버튼
+            if st.button("❌ 원문 정보 닫기", key="close_source_info"):
+                del st.session_state.show_source_info
+                st.rerun()
     
     def render_message(self, message: Dict[str, Any]):
         """개별 메시지 렌더링"""
@@ -308,6 +319,8 @@ class LegalAssistant:
                 # 출처 정보 표시 (있는 경우)
                 if "sources" in message and message["sources"]:
                     st.markdown("**📚 참고 법령 조문:**")
+                    # 메시지 고유 ID 생성 (타임스탬프 기반)
+                    message_id = message.get('timestamp', str(hash(message.get('content', ''))))
                     for i, source in enumerate(message["sources"][:3], 1):
                         with st.expander(f"{i}. {source.get('law_name', '')} {source.get('article_number', '')}", expanded=False):
                             col1, col2 = st.columns([3, 1])
@@ -319,10 +332,16 @@ class LegalAssistant:
                                 st.write(f"**유사도:** {source.get('similarity_score', 0):.3f}")
                             
                             with col2:
-                                # 원문 파일 보기 버튼
+                                # 원문 파일 보기 버튼 - 고유 키 생성
                                 law_name = source.get('law_name', '')
-                                if st.button(f"📄 원문 보기", key=f"source_{i}_{hash(law_name)}"):
-                                    self.show_source_document(law_name, source.get('article_number', ''))
+                                article_number = source.get('article_number', '')
+                                unique_key = f"source_{message_id}_{i}_{hash(law_name + article_number)}"
+                                if st.button(f"📄 원문 보기", key=unique_key):
+                                    # session state에 저장하여 별도 영역에서 표시
+                                    st.session_state.show_source_info = {
+                                        'law_name': law_name,
+                                        'article_number': article_number
+                                    }
                 
                 # 관련 조문 추천 (있는 경우)
                 if "related_articles" in message and message["related_articles"]:
@@ -434,7 +453,7 @@ class LegalAssistant:
                 st.session_state.chat_history.append(error_message)
     
     def show_source_document(self, law_name: str, article_number: str):
-        """원문 법령 문서 표시"""
+        """원문 법령 문서 표시 (중첩 Expander 문제 해결)"""
         # 법령명과 파일명 매핑
         law_file_mapping = {
             "도시 및 주거환경정비법": "도시 및 주거환경정비법(법률)(제20955호)(20250520).doc",
@@ -442,7 +461,7 @@ class LegalAssistant:
             "빈집 및 소규모주택 정비에 관한 특례법": "빈집 및 소규모주택 정비에 관한 특례법(법률)(제19225호)(20240215).doc",
             "정비사업 계약업무 처리기준": "정비사업 계약업무 처리기준(국토교통부고시)(제2024-465호)(20240905).doc",
             "서울특별시 도시재정비 촉진을 위한 조례": "서울특별시 도시재정비 촉진을 위한 조례(서울특별시조례)(제9639호)(20250519).doc",
-            "용인시 도시 및 주거환경정비 조례": "용인시 도시 및 주거환경정비 조례(경기도 용인시조례)(제2553호)(20240925).doc",
+            "용인시 도시 및 주거환정비 조례": "용인시 도시 및 주거환경정비 조례(경기도 용인시조례)(제2553호)(20240925).doc",
             "성남시 도시계획 조례": "성남시 도시계획 조례(경기도 성남시조례)(제4203호)(20250310).doc",
             "안양시 도시계획 조례": "안양시 도시계획 조례(경기도 안양시조례)(제3675호)(20240927).doc"
         }
@@ -459,44 +478,48 @@ class LegalAssistant:
             
             # 파일 존재 확인
             if os.path.exists(file_path):
-                # 모달 다이얼로그로 파일 정보 표시
-                with st.modal(f"📄 {law_name} 원문", width="large"):
-                    st.markdown(f"### 📋 **{law_name}**")
-                    st.markdown(f"**🔍 찾고 있는 조문:** {article_number}")
-                    st.markdown(f"**📁 파일명:** {matched_file}")
+                # Expander 대신 직접 컨테이너 사용 (중첩 방지)
+                st.markdown("---")
+                st.markdown(f"### 📄 **{law_name}** 원문 정보")
+                st.markdown(f"**🔍 찾고 있는 조문:** {article_number}")
+                st.markdown(f"**📁 파일명:** {matched_file}")
+                
+                # 파일 다운로드 링크 제공
+                try:
+                    with open(file_path, 'rb') as file:
+                        file_data = file.read()
+                        st.download_button(
+                            label="📥 원문 파일 다운로드",
+                            data=file_data,
+                            file_name=matched_file,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"download_{hash(law_name + article_number)}"
+                        )
+                except Exception as e:
+                    st.error(f"파일 읽기 오류: {e}")
+                
+                # 관련 조문 정보 표시
+                st.info(f"🎯 이 법령의 {article_number} 관련 정보를 찾고 계신가요? 원문 파일을 다운로드하여 상세한 조문 내용을 확인하실 수 있습니다.")
+                
+                # 관련 질의 제안
+                if article_number:
+                    suggested_queries = [
+                        f"{law_name} {article_number}의 상세 내용은?",
+                        f"{article_number}와 관련된 다른 조문들은?",
+                        f"{law_name}의 {article_number} 시행규칙은?"
+                    ]
                     
-                    st.divider()
+                    st.markdown("**💡 관련 질의 제안:**")
+                    col1, col2, col3 = st.columns(3)
                     
-                    # 파일 다운로드 링크 제공
-                    try:
-                        with open(file_path, 'rb') as file:
-                            file_data = file.read()
-                            st.download_button(
-                                label="📥 원문 파일 다운로드",
-                                data=file_data,
-                                file_name=matched_file,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
-                    except Exception as e:
-                        st.error(f"파일 읽기 오류: {e}")
-                    
-                    # 관련 조문 정보 표시
-                    st.markdown("---")
-                    st.markdown(f"**🎯 이 법령의 {article_number} 관련 정보를 찾고 계신가요?**")
-                    st.info("원문 파일을 다운로드하여 상세한 조문 내용을 확인하실 수 있습니다.")
-                    
-                    # 관련 질의 제안
-                    if article_number:
-                        suggested_queries = [
-                            f"{law_name} {article_number}의 상세 내용은?",
-                            f"{article_number}와 관련된 다른 조문들은?",
-                            f"{law_name}의 {article_number} 시행규칙은?"
-                        ]
-                        
-                        st.markdown("**💡 관련 질의 제안:**")
-                        for query in suggested_queries:
-                            if st.button(query, key=f"suggest_{hash(query)}"):
+                    for idx, query in enumerate(suggested_queries):
+                        unique_key = f"suggest_{hash(law_name + article_number + str(idx))}"
+                        with [col1, col2, col3][idx]:
+                            if st.button(query, key=unique_key, help="클릭하여 관련 질의하기"):
                                 st.session_state.suggested_query = query
+                                # 원문 정보 닫기
+                                if hasattr(st.session_state, 'show_source_info'):
+                                    del st.session_state.show_source_info
                                 st.rerun()
             else:
                 st.error(f"파일을 찾을 수 없습니다: {file_path}")
@@ -567,16 +590,16 @@ class LegalAssistant:
         # 헤더 렌더링
         self.render_header()
         
-        # 레이아웃 구성
-        col1, col2 = st.columns([3, 1])
+        # 안정적인 레이아웃 구성
+        # 사이드바를 진짜 사이드바로 이동
+        with st.sidebar:
+            self.render_sidebar()
         
-        with col1:
+        # 메인 컨테이너
+        main_container = st.container()
+        with main_container:
             # 메인 채팅 인터페이스
             self.render_chat_interface()
-        
-        with col2:
-            # 사이드바
-            self.render_sidebar()
 
 
 def main():

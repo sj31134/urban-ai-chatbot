@@ -213,7 +213,7 @@ class LegalGraphManager:
                 last_updated: $last_updated,
                 created_at: datetime()
             })
-            RETURN id(a) as node_id
+            RETURN elementId(a) as node_id
             """
             
             result = session.run(query, article_data)
@@ -230,14 +230,14 @@ class LegalGraphManager:
                 
             query = f"""
             MATCH (from_node), (to_node)
-            WHERE id(from_node) = $from_id AND id(to_node) = $to_id
+            WHERE elementId(from_node) = $from_id AND elementId(to_node) = $to_id
             CREATE (from_node)-[r:{rel_type} $properties]->(to_node)
             RETURN type(r) as relationship_type
             """
             
             result = session.run(query, {
-                "from_id": int(from_node_id),
-                "to_id": int(to_node_id),
+                "from_id": from_node_id,
+                "to_id": to_node_id,
                 "properties": properties
             })
             
@@ -267,13 +267,13 @@ class LegalGraphManager:
         with self.driver.session() as session:
             query = f"""
             MATCH (a:Article)-[*1..{depth}]-(related:Article)
-            WHERE id(a) = $article_id
+            WHERE elementId(a) = $article_id
             RETURN DISTINCT related.article_number as article_number,
                             related.content as content,
                             related.section as section
             """
             
-            result = session.run(query, {"article_id": int(article_id)})
+            result = session.run(query, {"article_id": article_id})
             return [dict(record) for record in result]
     
     def get_law_structure(self, law_id: str) -> Dict:
@@ -319,7 +319,7 @@ class LegalGraphManager:
             WHERE a.article_number IN $references
             RETURN a.article_number as article_number,
                    a.content as content,
-                   id(a) as node_id
+                   elementId(a) as node_id
             """
             
             result = session.run(query, {"references": references})

@@ -244,7 +244,7 @@ class LegalGraphRetriever(BaseRetriever):
         with self.graph_manager.driver.session() as session:
             query = """
             MATCH (a:Article {article_number: $article_number})
-            RETURN id(a) as node_id, a.article_number as article_number
+            RETURN elementId(a) as node_id, a.article_number as article_number
             LIMIT 1
             """
             result = session.run(query, {"article_number": article_number})
