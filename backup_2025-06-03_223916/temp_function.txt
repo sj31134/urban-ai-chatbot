@@ -1,0 +1,2 @@
+def get_law_name_by_id(law_id: str) -> str:
+    """law_id로 법령명 조회"""
