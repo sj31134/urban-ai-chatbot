@@ -204,19 +204,6 @@ urban_legal_rag/
 # 필수 설정
 GOOGLE_API_KEY=your_gemini_api_key_here
 
-# Neo4j 데이터베이스 (기본값 사용 가능)
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=legal_admin  
-NEO4J_PASSWORD=secure_password
-NEO4J_DATABASE=legal_graph
-
-# 임베딩 모델 (기본값: sentence-transformers/all-MiniLM-L6-v2)
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-
-# LangChain 디버깅 (선택사항)
-LANGCHAIN_API_KEY=your_langchain_api_key
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_PROJECT=urban-legal-rag
 
 # 로그 레벨 (INFO, DEBUG, WARNING, ERROR)
 LOG_LEVEL=INFO
@@ -542,6 +529,279 @@ weights = {
 - 법제처, 국토교통부 등 공식 출처 데이터 활용
 - 상업적 이용 시 별도 검토 필요
 
+## 🌐 클라우드 배포 가이드
+
+### 🚀 프로덕션 배포 개요
+
+현재 시스템은 다음 클라우드 플랫폼에서 배포 가능합니다:
+- **Streamlit Community Cloud** (추천) - 무료, 간편
+- **Railway** - 컨테이너 기반, 자동 스케일링
+- **Google Cloud Run** - 서버리스, 고성능
+- **Heroku** - 전통적인 PaaS
+
+### 🌟 Streamlit Community Cloud 배포 (추천)
+
+#### **1단계: GitHub 저장소 준비**
+```bash
+# 코드 커밋 및 푸시
+git add .
+git commit -m "Fix Neo4j connection and add cloud deployment guide"
+git push origin main
+```
+
+#### **2단계: Streamlit Cloud에서 앱 생성**
+1. https://share.streamlit.io/ 접속
+2. "New app" 클릭
+3. GitHub 저장소 선택
+4. **Main file path**: `web_app.py`
+5. **Advanced settings** 클릭
+
+#### **3단계: Secrets 설정**
+Streamlit Cloud의 **App settings > Secrets**에서 다음 설정:
+
+```toml
+# Neo4j 클라우드 연결
+NEO4J_URI = "neo4j+s://b51ef174.databases.neo4j.io"
+NEO4J_USERNAME = "neo4j"
+NEO4J_PASSWORD = "KdPrlE5RT7_Nq8I2DuJzDlPyOPV_HxM-vd8UtDvAdKw"
+NEO4J_DATABASE = "neo4j"
+
+# Google Gemini API
+GOOGLE_API_KEY = "AIzaSyAPBXAKIxJPhPp5ZW2swP_lF6_-3209ZGw"
+
+# LangChain 추적 (선택사항)
+LANGCHAIN_API_KEY = "your_langchain_api_key_here"
+LANGCHAIN_TRACING_V2 = true
+LANGCHAIN_PROJECT = "urban_legal_rag"
+
+# 환경 설정
+ENVIRONMENT = "production"
+```
+
+#### **4단계: 배포 및 접속**
+- 자동 배포 완료 후 제공되는 URL로 접속
+- 예: `https://your-app-name.streamlit.app`
+
+### 🚂 Railway 배포
+
+#### **1단계: Railway CLI 설치 및 로그인**
+```bash
+# Railway CLI 설치
+npm install -g @railway/cli
+
+# 로그인
+railway login
+```
+
+#### **2단계: 프로젝트 생성 및 배포**
+```bash
+# 프로젝트 생성
+railway new
+
+# 환경변수 설정
+railway variables set NEO4J_URI=neo4j+s://b51ef174.databases.neo4j.io
+railway variables set NEO4J_USERNAME=neo4j
+railway variables set NEO4J_PASSWORD=KdPrlE5RT7_Nq8I2DuJzDlPyOPV_HxM-vd8UtDvAdKw
+railway variables set NEO4J_DATABASE=neo4j
+railway variables set GOOGLE_API_KEY=AIzaSyAPBXAKIxJPhPp5ZW2swP_lF6_-3209ZGw
+railway variables set ENVIRONMENT=production
+
+# Docker 배포
+railway up --detach
+```
+
+#### **3단계: 도메인 설정**
+```bash
+# 커스텀 도메인 추가 (선택사항)
+railway domain add your-domain.com
+```
+
+### ☁️ Google Cloud Run 배포
+
+#### **1단계: Google Cloud 프로젝트 설정**
+```bash
+# Google Cloud CLI 설치 및 인증
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# Container Registry 활성화
+gcloud services enable run.googleapis.com
+gcloud services enable containerregistry.googleapis.com
+```
+
+#### **2단계: 컨테이너 빌드 및 푸시**
+```bash
+# Docker 이미지 빌드
+docker build -t gcr.io/YOUR_PROJECT_ID/urban-ai-chatbot .
+
+# Google Container Registry에 푸시
+docker push gcr.io/YOUR_PROJECT_ID/urban-ai-chatbot
+```
+
+#### **3단계: Cloud Run 배포**
+```bash
+gcloud run deploy urban-ai-chatbot \
+  --image gcr.io/YOUR_PROJECT_ID/urban-ai-chatbot \
+  --platform managed \
+  --region asia-northeast1 \
+  --allow-unauthenticated \
+  --set-env-vars="NEO4J_URI=neo4j+s://b51ef174.databases.neo4j.io,NEO4J_USERNAME=neo4j,NEO4J_PASSWORD=your_password,GOOGLE_API_KEY=your_api_key"
+```
+
+### 📱 외부 접속 및 이용 가이드
+
+#### **🌍 퍼블릭 URL로 접속하기**
+
+배포 완료 후 다음과 같은 URL을 통해 어디서든 접속 가능합니다:
+
+**Streamlit Cloud 예시:**
+- URL: `https://urban-ai-chatbot.streamlit.app`
+- 모바일, 태블릿, PC에서 동일하게 접속 가능
+- 로컬 컴퓨터 종료와 무관하게 24/7 서비스
+
+**Railway 예시:**
+- URL: `https://urban-ai-chatbot-production.up.railway.app`
+- 자동 HTTPS 인증서 제공
+- 글로벌 CDN으로 빠른 접속
+
+#### **📱 모바일 접속 최적화**
+
+**반응형 디자인 지원:**
+- 스마트폰: 세로 모드 최적화
+- 태블릿: 가로/세로 자동 조정
+- PC: 전체 기능 이용
+
+**접속 방법:**
+1. 스마트폰 브라우저에서 배포 URL 접속
+2. "홈 화면에 추가" 선택 → 앱처럼 사용 가능
+3. 오프라인에서도 기본 기능 이용
+
+#### **🔗 팀 공유 및 협업**
+
+**URL 공유:**
+```bash
+# 팀원들에게 배포된 URL 공유
+https://your-app-name.streamlit.app
+
+# QR 코드 생성하여 모바일 접속 편의성 제공
+```
+
+**권한 관리:**
+- 퍼블릭 접속: 누구나 이용 가능
+- 인증 추가 시: Google/GitHub 로그인 연동 가능
+- 기업용: IP 제한 및 사용자 관리 가능
+
+#### **⚡ 성능 및 모니터링**
+
+**자동 스케일링:**
+- 사용자 수에 따라 자동으로 서버 확장/축소
+- 트래픽 증가 시 자동 대응
+- 24시간 무중단 서비스
+
+**모니터링 도구:**
+```bash
+# Streamlit Cloud 모니터링
+- App dashboard에서 실시간 사용량 확인
+- 메트릭: 활성 사용자, 응답 시간, 오류율
+
+# 사용량 확인 방법
+1. Streamlit Cloud 로그인
+2. App settings > Monitoring
+3. 실시간 차트 및 로그 확인
+```
+
+#### **🛠️ 실시간 업데이트**
+
+**자동 배포:**
+```bash
+# GitHub에 푸시하면 자동 재배포
+git add .
+git commit -m "새로운 기능 추가"
+git push origin main
+
+# 5-10분 후 자동으로 새 버전 배포 완료
+```
+
+**롤백 기능:**
+- 문제 발생 시 이전 버전으로 즉시 롤백
+- Streamlit Cloud에서 버전 히스토리 관리
+- 무중단 배포로 사용자 경험 보장
+
+### 🔧 배포 후 확인사항
+
+#### **필수 체크리스트**
+- [ ] 웹사이트 정상 로딩 확인
+- [ ] Neo4j 데이터베이스 연결 상태 확인
+- [ ] 검색 기능 정상 작동 테스트
+- [ ] 모바일 반응형 디자인 확인
+- [ ] 외부 네트워크에서 접속 테스트
+
+#### **성능 테스트**
+```bash
+# 응답 시간 테스트 (배포된 URL 사용)
+curl -w "@curl-format.txt" -o /dev/null -s "https://your-app.streamlit.app"
+
+# 부하 테스트 (선택사항)
+# Apache Bench 사용
+ab -n 100 -c 10 https://your-app.streamlit.app/
+```
+
+#### **보안 확인**
+- HTTPS 인증서 자동 적용 확인
+- API 키가 브라우저에 노출되지 않는지 확인
+- 로그에 민감한 정보가 포함되지 않는지 점검
+
+### 💰 비용 및 제한사항
+
+#### **Streamlit Community Cloud (무료)**
+- ✅ 무료 호스팅
+- ✅ 무제한 퍼블릭 앱
+- ⚠️ 리소스 제한: 1GB RAM, 공유 CPU
+- ⚠️ 비활성 시 슬립 모드 (자동 재시작)
+
+#### **유료 플랫폼 비교**
+| 플랫폼 | 월 비용 | RAM | 트래픽 | 특징 |
+|--------|---------|-----|--------|------|
+| Railway | $5-20 | 1-8GB | 무제한 | 컨테이너 기반 |
+| Google Cloud Run | $0-50 | 1-4GB | 종량제 | 서버리스 |
+| Heroku | $7-25 | 512MB-2.5GB | 무제한 | 전통적 PaaS |
+
+### 🆘 배포 트러블슈팅
+
+#### **일반적인 배포 오류**
+
+**1. 빌드 실패**
+```bash
+# 증상: Docker 빌드 시 패키지 설치 실패
+# 해결: requirements.txt 버전 호환성 확인
+pip install --upgrade pip
+pip install -r requirements.txt --verbose
+```
+
+**2. 환경변수 오류**
+```bash
+# 증상: "NEO4J connection failed"
+# 해결: Secrets 설정 재확인
+# 특수문자가 포함된 패스워드는 따옴표로 감싸기
+NEO4J_PASSWORD = "KdPrlE5RT7_Nq8I2DuJzDlPyOPV_HxM-vd8UtDvAdKw"
+```
+
+**3. 메모리 부족**
+```bash
+# 증상: "Memory limit exceeded"
+# 해결: 경량 임베딩 모델 사용
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+```
+
+**4. 네트워크 타임아웃**
+```bash
+# 증상: Neo4j 연결 타임아웃
+# 해결: 연결 타임아웃 증가
+NEO4J_CONNECTION_TIMEOUT = 60
+```
+
+이제 **로컬 종료와 무관하게 24/7 클라우드 서비스**가 준비되었습니다! 🚀
+
 ## 📞 지원 및 문의
 
 ### 🆘 문제 해결
@@ -560,7 +820,7 @@ docker logs neo4j-legal      # 로그 확인
 
 # .env 파일 확인
 NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=legal_admin
+NEO4J_USERNAME=legal_admin
 NEO4J_PASSWORD=secure_password
 ```
 

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 
 from neo4j import GraphDatabase
-from neo4j.exceptions import ServiceUnavailable
+from neo4j.exceptions import ServiceUnavailable, AuthError, ClientError
 from dotenv import load_dotenv
 
 # 로깅 설정
@@ -106,13 +106,23 @@ class LegalGraphManager:
             return self._get_env_config()
     
     def _get_env_config(self) -> Dict:
-        """환경변수에서 설정 로드"""
+        """환경변수에서 설정 로드 (Streamlit Cloud 호환)"""
+        def get_env_var(key: str, default: str = "") -> str:
+            """환경변수 또는 Streamlit secrets에서 값 가져오기"""
+            try:
+                import streamlit as st
+                if hasattr(st, 'secrets') and key in st.secrets:
+                    return str(st.secrets[key])
+            except:
+                pass
+            return os.getenv(key, default)
+        
         return {
             "connection": {
-                "uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-                "username": os.getenv("NEO4J_USER", "neo4j"),
-                "password": os.getenv("NEO4J_PASSWORD", "password"),
-                "database": os.getenv("NEO4J_DATABASE", "neo4j")
+                "uri": get_env_var("NEO4J_URI", "bolt://localhost:7687"),
+                "username": get_env_var("NEO4J_USERNAME", get_env_var("NEO4J_USER", "neo4j")),
+                "password": get_env_var("NEO4J_PASSWORD", "password"),
+                "database": get_env_var("NEO4J_DATABASE", "neo4j")
             }
         }
     
@@ -120,17 +130,54 @@ class LegalGraphManager:
         """Neo4j 데이터베이스 연결"""
         try:
             conn_config = self.config["connection"]
+            
+            # 연결 정보 로깅 (비밀번호 제외)
+            logger.info(f"Neo4j 연결 시도: {conn_config['uri']}")
+            logger.info(f"사용자: {conn_config['username']}")
+            logger.info(f"데이터베이스: {conn_config['database']}")
+            
             self.driver = GraphDatabase.driver(
                 conn_config["uri"],
-                auth=(conn_config["username"], conn_config["password"])
+                auth=(conn_config["username"], conn_config["password"]),
+                connection_timeout=30,
+                max_connection_lifetime=3600
             )
+            
             # 연결 테스트
-            with self.driver.session() as session:
-                session.run("RETURN 1")
-            logger.info("Neo4j 데이터베이스 연결 성공")
+            with self.driver.session(database=conn_config["database"]) as session:
+                result = session.run("RETURN 1 as test")
+                test_value = result.single()["test"]
+                if test_value != 1:
+                    raise Exception("연결 테스트 실패")
+                    
+            logger.info("✅ Neo4j 데이터베이스 연결 성공")
+            
+        except AuthError as e:
+            error_msg = f"❌ Neo4j 인증 실패: 사용자명({conn_config['username']}) 또는 비밀번호를 확인하세요"
+            logger.error(error_msg)
+            logger.error("해결책: NEO4J_USERNAME과 NEO4J_PASSWORD 환경변수를 확인하세요")
+            raise Exception(error_msg) from e
+            
         except ServiceUnavailable as e:
-            logger.error(f"Neo4j 데이터베이스 연결 실패: {e}")
-            raise
+            error_msg = f"❌ Neo4j 서비스 연결 불가: {conn_config['uri']}"
+            logger.error(error_msg)
+            logger.error("해결책: 1) Neo4j URI 확인 2) 네트워크 연결 확인 3) Neo4j 서버 상태 확인")
+            raise Exception(error_msg) from e
+            
+        except ClientError as e:
+            error_msg = f"❌ Neo4j 클라이언트 오류: {e.message}"
+            logger.error(error_msg)
+            logger.error(f"해결책: 데이터베이스 '{conn_config['database']}' 존재 여부 및 권한을 확인하세요")
+            raise Exception(error_msg) from e
+            
+        except Exception as e:
+            if "연결 테스트 실패" in str(e):
+                error_msg = "❌ Neo4j 연결 테스트 실패: 기본 쿼리 실행 불가"
+            else:
+                error_msg = f"❌ Neo4j 연결 중 알 수 없는 오류: {e}"
+            logger.error(error_msg)
+            logger.error("해결책: 1) 환경변수 확인 2) Neo4j 서버 상태 확인 3) 네트워크 연결 확인")
+            raise Exception(error_msg) from e
     
     def close(self):
         """데이터베이스 연결 종료"""

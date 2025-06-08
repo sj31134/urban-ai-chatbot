@@ -75,8 +75,9 @@ def initialize_system():
                 print("   🔗 개발 환경: 기본 Neo4j 설정 사용")
                 # 개발 환경에서는 환경변수가 없어도 기본값으로 시도
                 os.environ.setdefault('NEO4J_URI', 'bolt://localhost:7687')
-                os.environ.setdefault('NEO4J_USER', 'neo4j')
+                os.environ.setdefault('NEO4J_USERNAME', 'neo4j')
                 os.environ.setdefault('NEO4J_PASSWORD', 'password')
+                os.environ.setdefault('NEO4J_DATABASE', 'neo4j')
         
         print("   🔗 Neo4j 데이터베이스 연결 중...")
         # LegalGraphManager는 환경변수를 직접 사용하므로 매개변수 없이 호출

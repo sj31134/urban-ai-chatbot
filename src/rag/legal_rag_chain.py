@@ -54,9 +54,19 @@ class LegalGraphRetriever(BaseRetriever):
             similarity_threshold: 유사도 임계값
             max_results: 최대 검색 결과 수
         """
-        # 임베딩 모델 초기화
-        model_name = embedding_model or os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-        embedder = SentenceTransformer(model_name)
+        # Streamlit Cloud 호환 환경변수 처리
+        def get_env_var(key: str, default: str = "") -> str:
+            try:
+                import streamlit as st
+                if hasattr(st, 'secrets') and key in st.secrets:
+                    return str(st.secrets[key])
+            except:
+                pass
+            return os.getenv(key, default)
+        
+        # 임베딩 모델 초기화 (메모리 최적화)
+        model_name = embedding_model or get_env_var("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        embedder = SentenceTransformer(model_name, device='cpu')
         
         super().__init__(
             graph_manager=graph_manager,
@@ -265,10 +275,21 @@ class LegalRAGChain:
         load_dotenv()
         self.graph_manager = graph_manager
         
+        # Streamlit Cloud 호환 환경변수 처리
+        def get_env_var(key: str, default: str = "") -> str:
+            """환경변수 또는 Streamlit secrets에서 값 가져오기"""
+            try:
+                import streamlit as st
+                if hasattr(st, 'secrets') and key in st.secrets:
+                    return str(st.secrets[key])
+            except:
+                pass
+            return os.getenv(key, default)
+        
         # Gemini LLM 초기화
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-1.5-flash",
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            google_api_key=get_env_var("GOOGLE_API_KEY"),
             temperature=0.1,
             max_tokens=2048
         )

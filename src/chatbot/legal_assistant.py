@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any
 import json
+from dotenv import load_dotenv
 
 # 프로젝트 루트 디렉토리를 Python 경로에 추가
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -17,10 +18,22 @@ sys.path.insert(0, project_root)
 
 from src.graph.legal_graph import LegalGraphManager
 from src.rag.legal_rag_chain import LegalRAGChain
-from dotenv import load_dotenv
 
 # 환경 변수 로드
 load_dotenv()
+
+# Streamlit Community Cloud 호환 환경변수 처리 함수
+def get_env_var(key: str, default: str = "") -> str:
+    """환경변수 또는 Streamlit secrets에서 값 가져오기"""
+    try:
+        # 먼저 st.secrets에서 시도 (Streamlit Community Cloud)
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return str(st.secrets[key])
+    except:
+        pass
+    
+    # 환경변수에서 가져오기 (로컬/Docker)
+    return os.getenv(key, default)
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -49,14 +62,14 @@ class LegalAssistant:
         if 'system_ready' not in st.session_state:
             st.session_state.system_ready = False
     
-    @st.cache_resource
+    @st.cache_resource(ttl=3600, max_entries=1)  # 1시간 TTL, 최대 1개 엔트리
     def load_components(_self):
         """시스템 구성 요소 로드 (캐시 활용)"""
         try:
             # Neo4j 그래프 관리자 초기화
             graph_manager = LegalGraphManager()
             
-            # RAG 체인 초기화
+            # RAG 체인 초기화 (메모리 최적화)
             rag_chain = LegalRAGChain(graph_manager)
             
             return graph_manager, rag_chain, True
@@ -73,7 +86,7 @@ class LegalAssistant:
                 
                 backup_llm = ChatGoogleGenerativeAI(
                     model="gemini-1.5-flash",
-                    google_api_key=os.getenv("GOOGLE_API_KEY")
+                    google_api_key=get_env_var("GOOGLE_API_KEY")
                 )
                 
                 return None, backup_llm, True

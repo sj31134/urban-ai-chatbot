@@ -1,0 +1,37 @@
+services:
+  urban-ai-chatbot:
+    build: .
+    container_name: urban-ai-chatbot
+    ports:
+      - "8501:8501"
+    environment:
+      # Neo4j 클라우드 연결 (기존 설정 유지)
+      - NEO4J_URI=${NEO4J_URI}
+      - NEO4J_USERNAME=${NEO4J_USERNAME}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - NEO4J_DATABASE=${NEO4J_DATABASE}
+      
+      # Google Gemini API (기존 설정 유지)  
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      
+      # LangSmith (선택사항)
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2}
+      
+      # Streamlit 설정
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      
+    volumes:
+      # 로그 및 데이터 지속성을 위한 볼륨
+      - ./logs:/app/logs
+      - ./data:/app/data
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 
